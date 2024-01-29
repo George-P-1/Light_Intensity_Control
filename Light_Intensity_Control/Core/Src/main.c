@@ -28,6 +28,7 @@
 /* USER CODE BEGIN Includes */
 #include "lcd_config.h"
 #include "encoder_config.h"
+#include "bh1750_config.h"
 
 //#include "lcd_hd44780_i2c.h"
 /* USER CODE END Includes */
@@ -54,11 +55,16 @@ unsigned char character;
 char text[LCD_LINE_BUF_LEN];
 unsigned int i = 0;
 
+// For UART
 uint8_t tx_buffer[100];
-#define txt_msg_len 10
+#define txt_msg_len 7
+
+// initial values for encoder, etc
 uint32_t encoder_val = 500;
 uint32_t set_point;
 uint32_t sensor_val = 4000;
+float Illuminance_lux = 0.0f;
+unsigned int Illuminance_lux_Int = 0;
 
 
 /* USER CODE END PV */
@@ -79,6 +85,8 @@ void SystemClock_Config(void);
   */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
+  if(htim == &htim6)
+  {
   encoder_val = ENC_GetCounter(&henc1);
   set_point = encoder_val * 100;
   LCD_I2C_SetCursor(&hlcd3, 0, 6);
@@ -87,6 +95,20 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   LCD_I2C_printDecInt(&hlcd3, set_point);
 
 //  HAL_UART_Transmit(&huart3, "Now",3 , 100); // for debugging
+
+//    static unsigned int cnt = 0;
+//    cnt++;
+    Illuminance_lux = BH1750_ReadIlluminance_lux(&hbh1750);
+    Illuminance_lux_Int = Illuminance_lux * 1000.0f;
+
+//    uint8_t tx_buffer[32];
+//    int tx_msg_len = sprintf((char*)tx_buffer, "%05u.%03u\r", Illuminance_lux_Int / 1000, Illuminance_lux_Int % 1000);
+    sensor_val = (uint32_t)Illuminance_lux;
+    LCD_I2C_SetCursor(&hlcd3, 1, 6);
+    LCD_I2C_printStr(&hlcd3, "          ");
+    LCD_I2C_SetCursor(&hlcd3, 1, 6);
+    LCD_I2C_printDecInt(&hlcd3, sensor_val);
+  }
 }
 
 /**
@@ -101,17 +123,21 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 //  HAL_UART_Receive_IT(&huart3, &character, 1);
 
 
-  sscanf((char*)tx_buffer, "e%4lus%4lu", &encoder_val, &sensor_val);
+//  sscanf((char*)tx_buffer, "e%4lus%4lu", &encoder_val, &sensor_val);
+  sscanf((char*)tx_buffer, "ENC%lu", &set_point);
+  encoder_val = set_point/100; // also gets rid of 2 digits to maintain the 100 lumen step of reference signal
+  ENC_SetCounter(&henc1, encoder_val);
 
 //  encoder_val = ENC_GetCounter(&henc1);
 //  LCD_I2C_SetCursor(&hlcd3, 0, 6);
 //  LCD_I2C_printStr(&hlcd3, "          ");
 //  LCD_I2C_SetCursor(&hlcd3, 0, 6);
 //  LCD_I2C_printDecInt(&hlcd3, encoder_val);
-  LCD_I2C_SetCursor(&hlcd3, 1, 6);
-  LCD_I2C_printStr(&hlcd3, "          ");
-  LCD_I2C_SetCursor(&hlcd3, 1, 6);
-  LCD_I2C_printDecInt(&hlcd3, sensor_val);
+
+//  LCD_I2C_SetCursor(&hlcd3, 1, 6);
+//  LCD_I2C_printStr(&hlcd3, "          ");
+//  LCD_I2C_SetCursor(&hlcd3, 1, 6);
+//  LCD_I2C_printDecInt(&hlcd3, sensor_val);
 
 //  memset(tx_buffer, 0, sizeof(tx_buffer));
   HAL_UART_Receive_IT(&huart3, tx_buffer, txt_msg_len);
@@ -154,6 +180,7 @@ int main(void)
   MX_USART3_UART_Init();
   MX_TIM4_Init();
   MX_TIM6_Init();
+  MX_I2C2_Init();
   /* USER CODE BEGIN 2 */
 
   // Initialize Encoder
@@ -169,6 +196,9 @@ int main(void)
   LCD_I2C_printStr(&hlcd3, ">");
   LCD_I2C_SetCursor(&hlcd3, 1, 6);
   LCD_I2C_printStr(&hlcd3, ">");
+
+  // Initialize BH1750
+  BH1750_Init(&hbh1750);
 
   uint8_t smiley_1[] = {
       0b00000000,
