@@ -138,7 +138,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-  sscanf((char*)rx_buffer, "ENC%u", &set_point);
+  sscanf((char*)rx_buffer, "ENC%lu", &set_point);
   encoder_val = set_point/ENC_STEP; // to maintain the 50 lumen step of reference signal
   ENC_SetCounter(&henc1, encoder_val);
 
@@ -211,7 +211,7 @@ int main(void)
   WS2812_Send();
 
 //  HAL_UART_Receive_IT(&huart3, &character, 1);
-  HAL_UART_Receive_IT(&huart3, tx_buffer, txt_msg_len);
+  HAL_UART_Receive_IT(&huart3, tx_buffer, rxt_msg_len);
 
   /* USER CODE END 2 */
 
@@ -220,6 +220,7 @@ int main(void)
   while (1)
   {
 
+	// Check closeness of measurement and reference signals
     if(isWithinRange(sensor_val, set_point-50, set_point+50))
     {
       hal_delay_val = 1000;
@@ -228,6 +229,7 @@ int main(void)
       hal_delay_val = 100;
     }
 
+    // Control signal updated based on sign of error (ON-OFF Control, Two Position)
     if(sensor_val != set_point && sensor_val < set_point)
     {
       brightness_level = brightness_level + 1;
