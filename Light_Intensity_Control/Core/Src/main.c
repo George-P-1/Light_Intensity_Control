@@ -26,7 +26,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "lcd_config.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -53,6 +53,27 @@
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
+
+/**
+  * @brief  Period elapsed callback in non-blocking mode
+  * @param  htim TIM handle
+  * @retval None
+  */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+  if(htim == &htim6)
+  {
+    LCD_I2C_SetCursor(&hlcd3, 0, 6);
+    LCD_I2C_printStr(&hlcd3, "       lux");
+    LCD_I2C_SetCursor(&hlcd3, 0, 6);
+    LCD_I2C_printDecInt(&hlcd3, set_point);
+
+    LCD_I2C_SetCursor(&hlcd3, 1, 6);
+    LCD_I2C_printStr(&hlcd3, "       lux");
+    LCD_I2C_SetCursor(&hlcd3, 1, 6);
+    LCD_I2C_printDecInt(&hlcd3, sensor_val);
+  }
+}
 
 /* USER CODE END PFP */
 
@@ -98,6 +119,16 @@ int main(void)
   MX_I2C2_Init();
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
+
+  // Initialize LCD
+  LCD_I2C_Init(&hlcd3);
+  LCD_I2C_printStr(&hlcd3, " REF:");
+  LCD_I2C_SetCursor(&hlcd3, 1, 0);
+  LCD_I2C_printStr(&hlcd3, " MSR:");
+  LCD_I2C_SetCursor(&hlcd3, 0, 6);
+  LCD_I2C_printStr(&hlcd3, ">");
+  LCD_I2C_SetCursor(&hlcd3, 1, 6);
+  LCD_I2C_printStr(&hlcd3, ">");
 
   /* USER CODE END 2 */
 
