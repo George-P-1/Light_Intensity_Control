@@ -58,7 +58,8 @@ unsigned int i = 0;
 
 // For UART
 uint8_t tx_buffer[100];
-#define txt_msg_len 7
+uint8_t rx_buffer[100];
+#define rxt_msg_len 7
 
 // initial values for encoder, etc
 uint32_t encoder_val = 0;
@@ -68,9 +69,9 @@ uint32_t sensor_val = 0;
 float Illuminance_lux = 0.0f;
 unsigned int Illuminance_lux_Int = 0;
 
-// arrays for storing LED data
-//uint8_t LED_Data[MAX_LED][4];
-//uint8_t LED_Mod[MAX_LED][4];  // for brightness
+// control signal and flag
+uint16_t brightness_level = 0;
+uint16_t hal_delay_val = 100;
 
 /* USER CODE END PV */
 
@@ -82,6 +83,11 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+// Function to check if 'value' is within the range [lowerBound, upperBound]
+int isWithinRange(int value, int lowerBound, int upperBound) {
+    return (value >= lowerBound && value <= upperBound);
+}
 
 /**
   * @brief  Pulse Finished callback in DMA mode
@@ -106,24 +112,22 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     encoder_val = ENC_GetCounter(&henc1);
     set_point = encoder_val * ENC_STEP;
     LCD_I2C_SetCursor(&hlcd3, 0, 6);
-    LCD_I2C_printStr(&hlcd3, "          ");
+    LCD_I2C_printStr(&hlcd3, "       lux");
     LCD_I2C_SetCursor(&hlcd3, 0, 6);
     LCD_I2C_printDecInt(&hlcd3, set_point);
 
-//  HAL_UART_Transmit(&huart3, "Now",3 , 100); // for debugging
-
-//    static unsigned int cnt = 0;
-//    cnt++;
     Illuminance_lux = BH1750_ReadIlluminance_lux(&hbh1750);
     Illuminance_lux_Int = Illuminance_lux * 1000.0f;
 
-//    uint8_t tx_buffer[32];
 //    int tx_msg_len = sprintf((char*)tx_buffer, "%05u.%03u\r", Illuminance_lux_Int / 1000, Illuminance_lux_Int % 1000);
     sensor_val = (uint32_t)Illuminance_lux;
     LCD_I2C_SetCursor(&hlcd3, 1, 6);
-    LCD_I2C_printStr(&hlcd3, "          ");
+    LCD_I2C_printStr(&hlcd3, "       lux");
     LCD_I2C_SetCursor(&hlcd3, 1, 6);
     LCD_I2C_printDecInt(&hlcd3, sensor_val);
+
+    int tx_msg_len = sprintf((char*)tx_buffer, "REF: %*lu lux  :  MSR: %*lu lux  :  CON: %*u [/255]\n\r", 4, set_point, 4, sensor_val, 3, brightness_level);
+    HAL_UART_Transmit(&huart3, tx_buffer, tx_msg_len, 100);
   }
 }
 
@@ -134,29 +138,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-//  text[i] = character;
-//  i = (i >= LCD_LINE_LEN-1) ? (0) : (i+1);
-//  HAL_UART_Receive_IT(&huart3, &character, 1);
-
-
-//  sscanf((char*)tx_buffer, "e%4lus%4lu", &encoder_val, &sensor_val);
-  sscanf((char*)tx_buffer, "ENC%u", &set_point);
-  encoder_val = set_point/ENC_STEP; // also gets rid of 2 digits to maintain the 100 lumen step of reference signal
+  sscanf((char*)rx_buffer, "ENC%u", &set_point);
+  encoder_val = set_point/ENC_STEP; // to maintain the 50 lumen step of reference signal
   ENC_SetCounter(&henc1, encoder_val);
 
-//  encoder_val = ENC_GetCounter(&henc1);
-//  LCD_I2C_SetCursor(&hlcd3, 0, 6);
-//  LCD_I2C_printStr(&hlcd3, "          ");
-//  LCD_I2C_SetCursor(&hlcd3, 0, 6);
-//  LCD_I2C_printDecInt(&hlcd3, encoder_val);
-
-//  LCD_I2C_SetCursor(&hlcd3, 1, 6);
-//  LCD_I2C_printStr(&hlcd3, "          ");
-//  LCD_I2C_SetCursor(&hlcd3, 1, 6);
-//  LCD_I2C_printDecInt(&hlcd3, sensor_val);
-
-//  memset(tx_buffer, 0, sizeof(tx_buffer));
-  HAL_UART_Receive_IT(&huart3, tx_buffer, txt_msg_len);
+//  memset(rx_buffer, 0, sizeof(rx_buffer));
+  HAL_UART_Receive_IT(&huart3, rx_buffer, rxt_msg_len);
 }
 
 /* USER CODE END 0 */
@@ -191,7 +178,6 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_TIM7_Init();
-  MX_DAC_Init();
   MX_I2C1_Init();
   MX_USART3_UART_Init();
   MX_TIM4_Init();
@@ -208,7 +194,7 @@ int main(void)
   LCD_I2C_Init(&hlcd3);
   LCD_I2C_printStr(&hlcd3, " REF:");
   LCD_I2C_SetCursor(&hlcd3, 1, 0);
-  LCD_I2C_printStr(&hlcd3, "SNSR:");
+  LCD_I2C_printStr(&hlcd3, " MSR:");
   LCD_I2C_SetCursor(&hlcd3, 0, 6);
   LCD_I2C_printStr(&hlcd3, ">");
   LCD_I2C_SetCursor(&hlcd3, 1, 6);
@@ -224,34 +210,6 @@ int main(void)
   Set_Brightness(255);
   WS2812_Send();
 
-
-  uint8_t smiley_1[] = {
-      0b00000000,
-      0b00001100,
-      0b00000010,
-      0b00010001,
-      0b00000001,
-      0b00010001,
-      0b00000010,
-      0b00001100
-  };
-
-  uint8_t smiley_2[] = {
-      0b00001100,
-      0b00000010,
-      0b00010001,
-      0b00000001,
-      0b00010001,
-      0b00000010,
-      0b00001100,
-      0b00000000
-  };
-
-  LCD_I2C_DefineChar(&hlcd3, 1, smiley_1);
-  LCD_I2C_DefineChar(&hlcd3, 2, smiley_2);
-
-  LCD_I2C_SetCursor(&hlcd3, 1, 1);
-
 //  HAL_UART_Receive_IT(&huart3, &character, 1);
   HAL_UART_Receive_IT(&huart3, tx_buffer, txt_msg_len);
 
@@ -261,28 +219,34 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//    if(text[0] != '\0')
-//    {
-//      LCD_I2C_printStr(&hlcd3, text);
-//      LCD_I2C_SetCursor(&hlcd3, 1, 0);
-//      HAL_Delay(100);
-//    }
 
-    // Red
-    Set_LED(0, 255, 0, 0);
-    Set_LED(1, 255, 0, 0);
-    for (int i=0; i<255; i++)
+    if(isWithinRange(sensor_val, set_point-50, set_point+50))
     {
-      Set_Brightness(i);
-      WS2812_Send();
-      HAL_Delay (10);
-    }
-    for (int i=255; i>=0; i--)
+      hal_delay_val = 1000;
+    } else
     {
-      Set_Brightness(i);
-      WS2812_Send();
-      HAL_Delay (10);
+      hal_delay_val = 100;
     }
+
+    if(sensor_val != set_point && sensor_val < set_point)
+    {
+      brightness_level = brightness_level + 1;
+      if(brightness_level > 255) brightness_level = 255;
+      else if(brightness_level < 0) brightness_level = 0;
+      Set_Brightness(brightness_level);
+      WS2812_Send();
+      HAL_Delay (hal_delay_val);
+    }
+    else if (sensor_val != set_point && sensor_val > set_point)
+    {
+      brightness_level = brightness_level - 1;
+      if(brightness_level > 255) brightness_level = 255;
+      else if(brightness_level < 0) brightness_level = 0;
+      Set_Brightness(brightness_level);
+      WS2812_Send();
+      HAL_Delay (hal_delay_val);
+    }
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
