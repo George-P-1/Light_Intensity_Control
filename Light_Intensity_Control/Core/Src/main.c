@@ -6,7 +6,7 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2024 STMicroelectronics.
+  * Copyright (c) 2023 STMicroelectronics.
   * All rights reserved.
   *
   * This software is licensed under terms that can be found in the LICENSE file
@@ -27,6 +27,9 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "lcd_config.h"
+#include "encoder_config.h"
+
+//#include "lcd_hd44780_i2c.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,12 +50,27 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+unsigned char character;
+char text[LCD_LINE_BUF_LEN];
+unsigned int i = 0;
+
+uint8_t tx_buffer[100];
+#define txt_msg_len 10
+uint32_t encoder_val = 500;
+uint32_t set_point;
+uint32_t sensor_val = 4000;
+
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
+
+/* USER CODE END PFP */
+
+/* Private user code ---------------------------------------------------------*/
+/* USER CODE BEGIN 0 */
 
 /**
   * @brief  Period elapsed callback in non-blocking mode
@@ -61,24 +79,43 @@ void SystemClock_Config(void);
   */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-  if(htim == &htim6)
-  {
-    LCD_I2C_SetCursor(&hlcd3, 0, 6);
-    LCD_I2C_printStr(&hlcd3, "       lux");
-    LCD_I2C_SetCursor(&hlcd3, 0, 6);
-    LCD_I2C_printDecInt(&hlcd3, set_point);
+  encoder_val = ENC_GetCounter(&henc1);
+  set_point = encoder_val * 100;
+  LCD_I2C_SetCursor(&hlcd3, 0, 6);
+  LCD_I2C_printStr(&hlcd3, "          ");
+  LCD_I2C_SetCursor(&hlcd3, 0, 6);
+  LCD_I2C_printDecInt(&hlcd3, set_point);
 
-    LCD_I2C_SetCursor(&hlcd3, 1, 6);
-    LCD_I2C_printStr(&hlcd3, "       lux");
-    LCD_I2C_SetCursor(&hlcd3, 1, 6);
-    LCD_I2C_printDecInt(&hlcd3, sensor_val);
-  }
+//  HAL_UART_Transmit(&huart3, "Now",3 , 100); // for debugging
 }
 
-/* USER CODE END PFP */
+/**
+  * @brief  Rx Transfer completed callback.
+  * @param  huart UART handle.
+  * @retval None
+  */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+//  text[i] = character;
+//  i = (i >= LCD_LINE_LEN-1) ? (0) : (i+1);
+//  HAL_UART_Receive_IT(&huart3, &character, 1);
 
-/* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
+
+  sscanf((char*)tx_buffer, "e%4lus%4lu", &encoder_val, &sensor_val);
+
+//  encoder_val = ENC_GetCounter(&henc1);
+//  LCD_I2C_SetCursor(&hlcd3, 0, 6);
+//  LCD_I2C_printStr(&hlcd3, "          ");
+//  LCD_I2C_SetCursor(&hlcd3, 0, 6);
+//  LCD_I2C_printDecInt(&hlcd3, encoder_val);
+  LCD_I2C_SetCursor(&hlcd3, 1, 6);
+  LCD_I2C_printStr(&hlcd3, "          ");
+  LCD_I2C_SetCursor(&hlcd3, 1, 6);
+  LCD_I2C_printDecInt(&hlcd3, sensor_val);
+
+//  memset(tx_buffer, 0, sizeof(tx_buffer));
+  HAL_UART_Receive_IT(&huart3, tx_buffer, txt_msg_len);
+}
 
 /* USER CODE END 0 */
 
@@ -112,23 +149,56 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_TIM7_Init();
+  MX_DAC_Init();
   MX_I2C1_Init();
   MX_USART3_UART_Init();
   MX_TIM4_Init();
   MX_TIM6_Init();
-  MX_I2C2_Init();
-  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
+
+  // Initialize Encoder
+  ENC_Init(&henc1);
+  HAL_TIM_Base_Start_IT(&htim6); // timer to send rotary encoder updates to LCD and maybe not just encoder but also sensor
 
   // Initialize LCD
   LCD_I2C_Init(&hlcd3);
   LCD_I2C_printStr(&hlcd3, " REF:");
   LCD_I2C_SetCursor(&hlcd3, 1, 0);
-  LCD_I2C_printStr(&hlcd3, " MSR:");
+  LCD_I2C_printStr(&hlcd3, "SNSR:");
   LCD_I2C_SetCursor(&hlcd3, 0, 6);
   LCD_I2C_printStr(&hlcd3, ">");
   LCD_I2C_SetCursor(&hlcd3, 1, 6);
   LCD_I2C_printStr(&hlcd3, ">");
+
+  uint8_t smiley_1[] = {
+      0b00000000,
+      0b00001100,
+      0b00000010,
+      0b00010001,
+      0b00000001,
+      0b00010001,
+      0b00000010,
+      0b00001100
+  };
+
+  uint8_t smiley_2[] = {
+      0b00001100,
+      0b00000010,
+      0b00010001,
+      0b00000001,
+      0b00010001,
+      0b00000010,
+      0b00001100,
+      0b00000000
+  };
+
+  LCD_I2C_DefineChar(&hlcd3, 1, smiley_1);
+  LCD_I2C_DefineChar(&hlcd3, 2, smiley_2);
+
+  LCD_I2C_SetCursor(&hlcd3, 1, 1);
+
+//  HAL_UART_Receive_IT(&huart3, &character, 1);
+  HAL_UART_Receive_IT(&huart3, tx_buffer, txt_msg_len);
 
   /* USER CODE END 2 */
 
@@ -136,6 +206,12 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+//    if(text[0] != '\0')
+//    {
+//      LCD_I2C_printStr(&hlcd3, text);
+//      LCD_I2C_SetCursor(&hlcd3, 1, 0);
+//      HAL_Delay(100);
+//    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
