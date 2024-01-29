@@ -29,6 +29,7 @@
 #include "lcd_config.h"
 #include "encoder_config.h"
 #include "bh1750_config.h"
+#include "WS2812.h"
 
 //#include "lcd_hd44780_i2c.h"
 /* USER CODE END Includes */
@@ -60,12 +61,16 @@ uint8_t tx_buffer[100];
 #define txt_msg_len 7
 
 // initial values for encoder, etc
-uint32_t encoder_val = 500;
-uint32_t set_point;
-uint32_t sensor_val = 4000;
+uint32_t encoder_val = 0;
+#define ENC_STEP 50
+uint32_t set_point = 0;
+uint32_t sensor_val = 0;
 float Illuminance_lux = 0.0f;
 unsigned int Illuminance_lux_Int = 0;
 
+// arrays for storing LED data
+//uint8_t LED_Data[MAX_LED][4];
+//uint8_t LED_Mod[MAX_LED][4];  // for brightness
 
 /* USER CODE END PV */
 
@@ -79,6 +84,17 @@ void SystemClock_Config(void);
 /* USER CODE BEGIN 0 */
 
 /**
+  * @brief  Pulse Finished callback in DMA mode
+  * @param  htim TIM handle
+  * @retval None
+  */
+void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
+{
+  HAL_TIM_PWM_Stop_DMA(&htim1, TIM_CHANNEL_1);
+  datasentflag=1;
+}
+
+/**
   * @brief  Period elapsed callback in non-blocking mode
   * @param  htim TIM handle
   * @retval None
@@ -87,12 +103,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   if(htim == &htim6)
   {
-  encoder_val = ENC_GetCounter(&henc1);
-  set_point = encoder_val * 100;
-  LCD_I2C_SetCursor(&hlcd3, 0, 6);
-  LCD_I2C_printStr(&hlcd3, "          ");
-  LCD_I2C_SetCursor(&hlcd3, 0, 6);
-  LCD_I2C_printDecInt(&hlcd3, set_point);
+    encoder_val = ENC_GetCounter(&henc1);
+    set_point = encoder_val * ENC_STEP;
+    LCD_I2C_SetCursor(&hlcd3, 0, 6);
+    LCD_I2C_printStr(&hlcd3, "          ");
+    LCD_I2C_SetCursor(&hlcd3, 0, 6);
+    LCD_I2C_printDecInt(&hlcd3, set_point);
 
 //  HAL_UART_Transmit(&huart3, "Now",3 , 100); // for debugging
 
@@ -124,8 +140,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 
 //  sscanf((char*)tx_buffer, "e%4lus%4lu", &encoder_val, &sensor_val);
-  sscanf((char*)tx_buffer, "ENC%lu", &set_point);
-  encoder_val = set_point/100; // also gets rid of 2 digits to maintain the 100 lumen step of reference signal
+  sscanf((char*)tx_buffer, "ENC%u", &set_point);
+  encoder_val = set_point/ENC_STEP; // also gets rid of 2 digits to maintain the 100 lumen step of reference signal
   ENC_SetCounter(&henc1, encoder_val);
 
 //  encoder_val = ENC_GetCounter(&henc1);
@@ -181,6 +197,7 @@ int main(void)
   MX_TIM4_Init();
   MX_TIM6_Init();
   MX_I2C2_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
 
   // Initialize Encoder
@@ -199,6 +216,14 @@ int main(void)
 
   // Initialize BH1750
   BH1750_Init(&hbh1750);
+
+  // Initialize 2 LEDs with some color
+  Set_LED(0, 255, 255, 255);
+  Set_LED(1, 255, 255, 255);
+
+  Set_Brightness(255);
+  WS2812_Send();
+
 
   uint8_t smiley_1[] = {
       0b00000000,
@@ -242,6 +267,22 @@ int main(void)
 //      LCD_I2C_SetCursor(&hlcd3, 1, 0);
 //      HAL_Delay(100);
 //    }
+
+    // Red
+    Set_LED(0, 255, 0, 0);
+    Set_LED(1, 255, 0, 0);
+    for (int i=0; i<255; i++)
+    {
+      Set_Brightness(i);
+      WS2812_Send();
+      HAL_Delay (10);
+    }
+    for (int i=255; i>=0; i--)
+    {
+      Set_Brightness(i);
+      WS2812_Send();
+      HAL_Delay (10);
+    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
